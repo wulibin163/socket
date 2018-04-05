@@ -1,9 +1,8 @@
-CFILES=$(wildcard *.c)
-COBJS=$(subst .c,.o,$(CFILES))
-TARGET=udp
 
-all: $(COBJS)
-	gcc -o $(TARGET)  $<
+all:
+	gcc -o udp udp.c
+	gcc -o tcp tcp.c
+	gcc -o reuse reuse.c
 
 clean:
-	rm $(TARGET)
+	rm -f udp tcp reuse

@@ -1,5 +1,6 @@
 # socket
 
+## summary
 examples for learn socket program on linux.
 
 1. udp socket
@@ -9,3 +10,7 @@ examples for learn socket program on linux.
 3. select/poll
 
 4. epoll
+
+
+## tcp socket
+![](stream.png)
