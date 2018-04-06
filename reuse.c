@@ -7,6 +7,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <poll.h>
+#include<sys/epoll.h>
 
 #define logp(...) {printf("[%s:%d]  ", __FILE__, __LINE__); printf(__VA_ARGS__);fflush(stdout);}
 
@@ -291,6 +292,103 @@ int server_poll(void)
     return 0;
 }
 
+int server_epoll(void)
+{
+    int tcpfd = 0;
+    int udpfd = 0;
+    int epollfd = 0;
+    struct epoll_event ev;
+    int evnums = 0;//epoll_wait return val
+    struct epoll_event evs[64];
+    int timeout = 30000;
+    int i = 0;
+    int fds[BACKLOG] = {0};
+    char addr[MAXADDRLEN] = {0};
+    socklen_t addrlen = 0;
+    int clisock = 0;
+    int nrecv = 0;
+    char buf[BUFLEN] = {0};
+
+    tcpfd = tcp_new_server();
+    udpfd = udp_new_server();
+    addfds(tcpfd, fds);
+    addfds(udpfd, fds);
+
+    epollfd = epoll_create(BACKLOG);
+    if(epollfd < 0) {
+        logp("epoll_create failed!\n");
+        return -1;
+    }
+
+    ev.events = EPOLLIN;
+    ev.data.fd = tcpfd;
+    if(epoll_ctl(epollfd, EPOLL_CTL_ADD, tcpfd,&ev) < 0) {
+        logp("epoll_ctl failed!\n");
+        return -1;
+    }
+    ev.events = EPOLLIN;
+    ev.data.fd = udpfd;
+    if(epoll_ctl(epollfd,EPOLL_CTL_ADD,udpfd,&ev) < 0) {
+        logp("epoll_ctl failed!\n");
+        return -1;
+    }
+
+    while(1)
+    {
+        evnums = epoll_wait(epollfd, evs, 64, timeout);
+        switch(evnums)
+        {
+            case 0:
+                logp("poll timeoutn!\n");
+                break;
+            case -1:
+                logp("poll error!\n");
+                break;
+            default:
+                for (i=0; i<evnums; i++) {
+                    /* accept for tcp socket */
+                    if(evs[i].data.fd == tcpfd \
+                            && evs[i].events & EPOLLIN) {
+                        clisock = accept(tcpfd, (struct sockaddr *)addr, &addrlen);
+                        if (clisock >= 0) {
+                            logp("accept from %s\n", inet_ntoa(*(struct in_addr*)addr));
+                            /* add accept fd to fds */
+                            ev.events = EPOLLIN;
+                            ev.data.fd = clisock;
+                            if(epoll_ctl(epollfd, EPOLL_CTL_ADD, clisock, &ev) < 0) {
+                                logp("epoll_ctl failed!\n");
+                                return -1;
+                            }
+                        }
+                    }
+
+                    /* recv for others */
+                    if(evs[i].data.fd != tcpfd\
+                            && evs[i].events & EPOLLIN) {
+                        nrecv = recv(evs[i].data.fd, buf, BUFLEN, 0);
+                        if ( nrecv > 0) {
+                            logp("recv buf, %s\n", buf);
+                        } else {
+                            /* remove closed fd from fds */
+                            if (nrecv == 0) {
+                                logp("connection fds[%d]=%d disconnected!\n", i, fds[i]);
+                                ev.events = EPOLLIN;
+                                ev.data.fd = evs[i].data.fd;
+                                if(epoll_ctl(epollfd, EPOLL_CTL_DEL, evs[i].data.fd, &ev) < 0) {
+                                    logp("epoll_ctl failed!\n");
+                                    return -1;
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+        }
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 2) {
@@ -303,7 +401,9 @@ int main(int argc, char **argv)
         if (strcmp(argv[1], "poll") == 0) {
             return server_poll();
         } else {
-            goto FAIL;
+            if (strcmp(argv[1], "epoll") == 0) {
+                return server_epoll();
+            }
         }
     }
 
