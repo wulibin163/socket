@@ -11,6 +11,11 @@ examples for learn socket program on linux.
 
 4. epoll
 
+## udp socket
+![](dgram.jpg)
 
 ## tcp socket
 ![](stream.png)
+
+## select/poll
+![](select.jpg)

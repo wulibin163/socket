@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
+#include <poll.h>
 
 #define logp(...) {printf("[%s:%d]  ", __FILE__, __LINE__); printf(__VA_ARGS__);fflush(stdout);}
 
@@ -210,6 +211,83 @@ int server_select(void)
 
 int server_poll(void)
 {
+    int tcpfd = 0;
+    int udpfd = 0;
+    struct pollfd peerfd[BACKLOG];
+    int nfds = 0;
+    int timeout = 30000;
+    int ret = -1;
+    int i = 0;
+    int fds[BACKLOG] = {0};
+    char addr[MAXADDRLEN] = {0};
+    socklen_t addrlen = 0;
+    int clisock = 0;
+    int nrecv = 0;
+    char buf[BUFLEN] = {0};
+
+    tcpfd = tcp_new_server();
+    udpfd = udp_new_server();
+    addfds(tcpfd, fds);
+    addfds(udpfd, fds);
+
+    while (1) {
+        for(; i < BACKLOG; ++i) {
+            peerfd[i].fd = -1;
+        }
+
+        /* add fds to peerfd array*/
+        nfds = 0;
+        for (i=0; i< BACKLOG; i++) {
+            if(fds[i] > 0) {
+                peerfd[i].fd = fds[i];
+                peerfd[i].events = POLLIN;
+                nfds++;
+            }
+        }
+
+        /* begin poll */
+        ret = poll(peerfd,nfds,timeout);
+        switch(ret)
+        {
+            case 0:
+                logp("poll timeoutn!\n");
+                break;
+            case -1:
+                logp("poll error!\n");
+                break;
+            default:
+                /* accept for tcp socket */
+                if(peerfd[0].revents & POLLIN) {
+                    clisock = accept(tcpfd, (struct sockaddr *)addr, &addrlen);
+                    if (clisock >= 0) {
+                        logp("accept from %s\n", inet_ntoa(*(struct in_addr*)addr));
+                        /* add accept fd to fds */
+                        if (addfds(clisock, fds) < 0) {
+                            logp("backlog full, can't add connection!\n");
+                        }
+                    }
+                }
+
+                /* recv for others */
+                for (i=1; i<nfds; i++) {
+                    if (peerfd[i].revents & POLLIN) {
+                        nrecv = recv(peerfd[i].fd, buf, BUFLEN, 0);
+                        if ( nrecv > 0) {
+                            logp("recv buf, %s\n", buf);
+                        } else {
+                            /* remove closed fd from fds */
+                            if (nrecv == 0) {
+                                logp("connection fds[%d]=%d disconnected!\n", i, fds[i]);
+                                close(fds[i]);
+                                fds[i] = 0;
+                            }
+                        }
+                    }
+                }
+                break;
+        }
+    }
+
     return 0;
 }
 
