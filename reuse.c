@@ -7,7 +7,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <poll.h>
+#ifndef __APPLE__
 #include<sys/epoll.h>
+#endif
 
 #define logp(...) {printf("[%s:%d]  ", __FILE__, __LINE__); printf(__VA_ARGS__);fflush(stdout);}
 
@@ -292,6 +294,7 @@ int server_poll(void)
     return 0;
 }
 
+#ifndef __APPLE__
 int server_epoll(void)
 {
     int tcpfd = 0;
@@ -371,7 +374,7 @@ int server_epoll(void)
                         } else {
                             /* remove closed fd from fds */
                             if (nrecv == 0) {
-                                logp("connection fds[%d]=%d disconnected!\n", i, fds[i]);
+                                logp("connection fds %d disconnected!\n", i, evs[i].data.fd);
                                 ev.events = EPOLLIN;
                                 ev.data.fd = evs[i].data.fd;
                                 if(epoll_ctl(epollfd, EPOLL_CTL_DEL, evs[i].data.fd, &ev) < 0) {
@@ -388,6 +391,7 @@ int server_epoll(void)
 
     return 0;
 }
+#endif
 
 int main(int argc, char **argv)
 {
@@ -401,9 +405,11 @@ int main(int argc, char **argv)
         if (strcmp(argv[1], "poll") == 0) {
             return server_poll();
         } else {
+#ifndef __APPLE__
             if (strcmp(argv[1], "epoll") == 0) {
                 return server_epoll();
             }
+#endif
         }
     }
 
